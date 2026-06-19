@@ -135,5 +135,5 @@ window.addEventListener('resize', function() {
 </body>
 </html>`),
     { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' }},
-  }},
+  });
 };
