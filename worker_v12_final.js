@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+export default { async fetch() { return new Response(`<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>⏱ 多策略动态模拟盘</title>
@@ -429,3 +429,4 @@ document.getElementById('teachTip').innerHTML='🚀 <b>模拟启动！</b><br>4�
 window.addEventListener('resize',function(){drawChart(selectedStrat)});
 </script>
 </body></html>
+`, {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'}}); } };
