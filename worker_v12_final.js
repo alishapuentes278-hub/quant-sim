@@ -239,6 +239,7 @@ function changeSpeed() {
 }
 
 function resetSim() {
+  lastUIUpdate = 0;
   priceHist=[1000];dates=[];simDay=0;seed=42;
   for(var k in strats) {
     var s=strats[k];
@@ -295,7 +296,11 @@ function showResults() {
   tip.innerHTML = lines;
 }
 
+var lastUIUpdate = 0;
 function updateUI(price) {
+  // 高速时节流：速度>=5时每5帧更新一次UI
+  if (speed >= 5 && simDay - lastUIUpdate < 5) return;
+  lastUIUpdate = simDay;
   var bh=(price-1000)/1000*100;
   document.getElementById('bhVal').textContent=(bh>=0?'+':'')+bh.toFixed(2)+'%';
   document.getElementById('bhVal').className=bh>=0?'up':'dn';
@@ -417,10 +422,70 @@ function drawChart(name) {
   for(var i=0;i<steps.length;i++){cx.fillText(dates[steps[i]]||'',px(steps[i]),hgt-2)}
 }
 
-function simTick(){if(running)nextDay();}
+
 
 // 启动
-var MAX_DAYS=250;var timer=setInterval(simTick,1000/speed);
+var MAX_DAYS=250;
+var runningTimer = null;
+
+function startTimer() {
+  if (runningTimer) clearTimeout(runningTimer);
+  var interval = Math.max(16, 1000 / speed);
+  
+  function tick() {
+    if (!running) return;
+    
+    // 每个tick处理的天数 = speed倍率（高速时一次处理多天）
+    var batch = Math.min(speed, 10);
+    for (var i = 0; i < batch; i++) {
+      if (simDay >= MAX_DAYS) break;
+      nextDay();
+    }
+    
+    // 下次tick
+    runningTimer = setTimeout(tick, interval);
+  }
+  
+  runningTimer = setTimeout(tick, interval);
+}
+
+// 速度变更时重启定时器
+var origChangeSpeed = changeSpeed;
+changeSpeed = function() {
+  speedIdx = (speedIdx+1)%speeds.length;
+  speed = speeds[speedIdx];
+  document.getElementById('speedBadge').textContent=speed+'x';
+  if (runningTimer) clearTimeout(runningTimer);
+  startTimer();
+};
+
+// 暂停/继续时重启
+var origTogglePlay = togglePlay;
+togglePlay = function() {
+  running=!running;
+  document.getElementById('playBtn').textContent=running?'⏸ 暂停':'▶ 继续';
+  document.getElementById('playBtn').className=running?'btn-play':'btn-pause';
+  if (running) startTimer();
+};
+
+// 重置时重启
+var origResetSim = resetSim;
+resetSim = function() {
+  priceHist=[1000];dates=[];simDay=0;seed=42;lastUIUpdate=0;
+  for(var k in strats) {
+    var s=strats[k];
+    s.cash=5000;s.pos=0;s.equity=5000;s.trades=[];
+    s.ma5=[];s.ma20=[];s.rsi=[];s.high20=[];s.ma10=[];s.ma30=[];
+  }
+  running=true;
+  document.getElementById('playBtn').textContent='⏸ 暂停';
+  document.getElementById('playBtn').className='btn-play';
+  updateUI(1000);
+  drawChart(selectedStrat);
+  renderStratButtons();
+  if (runningTimer) clearTimeout(runningTimer);
+  startTimer();
+};
 renderStratButtons();
 selectStrat("金叉死叉");
 updateStratComparison();
