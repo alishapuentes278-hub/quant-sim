@@ -133,7 +133,7 @@ window.addEventListener('resize', function() {
 });
 </script>
 </body>
-</html>`),
+</html>`,
     { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' }},
   });
 };
