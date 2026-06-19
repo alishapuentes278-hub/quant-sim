@@ -1,0 +1,409 @@
+export default { async fetch() { return new Response(`<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>⏱ 多策略动态模拟盘</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f5f5f5;font-family:-apple-system,Helvetica Neue,sans-serif;color:#333;padding-bottom:80px}
+.top{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:24px 16px 20px;color:#fff}
+.top .sm{font-size:12px;color:#8b9dc3}
+.top .big{font-size:36px;font-weight:700;margin:4px 0 2px;letter-spacing:-1px}
+.top .big span{font-size:14px;font-weight:400;color:#8b9dc3}
+.top .row{display:flex;gap:20px;margin-top:8px;flex-wrap:wrap}
+.top .row div{font-size:13px}
+.up{color:#ff4757}.dn{color:#2ed573}
+.label{color:#8b9dc3;font-size:11px}
+.card{background:#fff;border-radius:12px;margin:12px 16px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.card .tit{font-size:13px;color:#999;margin-bottom:8px;display:flex;justify-content:space-between}
+.chart-box{width:100%;height:360px;position:relative;margin-bottom:4px}
+canvas{width:100%;height:100%;display:block;border-radius:6px}
+.lg{display:flex;gap:14px;padding:4px 0;font-size:11px;color:#999;flex-wrap:wrap;justify-content:center}
+.lg i{display:inline-block;width:16px;height:2px;border-radius:2px;vertical-align:middle;margin-right:2px}
+.ctrl{display:flex;gap:6px;justify-content:center;padding:6px 0;flex-wrap:wrap}
+.ctrl button{padding:5px 14px;border-radius:20px;border:none;font-size:12px;font-weight:600;cursor:pointer}
+.btn-pause{background:#ff4757;color:#fff}.btn-play{background:#2ed573;color:#fff}
+.btn-ctrl{background:#667eea;color:#fff}.btn-ctrl2{background:#f0f0f0;color:#666}
+.speed-badge{display:inline-block;background:#667eea20;color:#667eea;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.strat-btn{display:inline-block;padding:4px 10px;margin:2px;border-radius:12px;border:1px solid #ddd;font-size:11px;cursor:pointer}
+.strat-btn.active{background:#667eea;color:#fff;border-color:#667eea}
+.strat-btn.win{background:#fff0f0;color:#ff4757;border-color:#ff4757}
+.stat{display:flex;gap:6px;flex-wrap:wrap}
+.stat-item{flex:1;min-width:60px;text-align:center;padding:6px 4px;background:#f8f9ff;border-radius:8px}
+.stat-item .val{font-size:16px;font-weight:700}
+.stat-item .lb{font-size:9px;color:#999;margin-top:1px}
+.tip{font-size:12px;color:#666;line-height:1.8;padding:8px;background:#f8f9ff;border-radius:8px;margin-top:6px}
+.day-counter{font-size:11px;color:#999;text-align:center;padding:4px}
+.strat-compact{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.strat-item{flex:1;min-width:45%;padding:6px 8px;border-radius:8px;font-size:11px;border:1px solid #eee}
+.strat-item.best{background:#fff0f0;border-color:#ff4757}
+.strat-name{font-weight:600;font-size:11px}
+.strat-eq{float:right}
+#tradeLog{max-height:180px;overflow-y:auto;font-size:11px}
+#tradeLog::-webkit-scrollbar{width:3px}
+#tradeLog::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
+</style></head><body>
+
+<div class="top">
+  <div class="sm">⏱ 多策略动态模拟盘</div>
+  <div class="big" id="totalVal">5,000.00 <span>CNY</span></div>
+  <div class="row">
+    <div><div class="up" id="retVal">+0.00%</div><div class="label">当前策略</div></div>
+    <div><div class="up" id="bhVal">+0.00%</div><div class="label">买入持有</div></div>
+    <div><div id="dayCount">0天</div><div class="label">模拟天数</div></div>
+    <div><div id="bestLabel">—</div><div class="label">最优策略</div></div>
+  </div>
+</div>
+
+<div class="ctrl">
+  <button class="btn-play" id="playBtn" onclick="togglePlay()">⏸ 暂停</button>
+  <button class="btn-ctrl" onclick="changeSpeed()">⚡<span id="speedBadge">1x</span></button>
+  <button class="btn-ctrl2" onclick="resetSim()">🔄 重置</button>
+</div>
+
+<div class="card" style="padding:10px 16px">
+  <div class="tit" style="margin-bottom:4px">选择策略查看交易 ⬇️</div>
+  <div id="stratButtons"></div>
+</div>
+
+<div class="card">
+  <div class="tit">K线图 · <span id="chartTitle">金叉死叉</span></div>
+  <div class="chart-box"><canvas id="kc"></canvas></div>
+  <div class="lg">
+    <span><i style="background:#f0b429"></i>MA5</span>
+    <span><i style="background:#ff6b6b"></i>MA20</span>
+    <span style="color:#2ed573">▲买入</span>
+    <span style="color:#ff4757">▼卖出</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="tit">策略PK 🏆</div>
+  <div id="stratComparison"></div>
+</div>
+
+<div class="card">
+  <div class="tit">交易日志 · <span id="logTitle">金叉死叉</span> <span id="logCount">0笔</span></div>
+  <div id="tradeLog">暂无交易</div>
+</div>
+
+<div class="card">
+  <div class="tit">📖 实时教学</div>
+  <div class="tip" id="teachTip">模拟启动中...</div>
+</div>
+
+<script>
+// ===== 多策略模拟引擎 =====
+var seed = 42, simDay = 0, running = true, speed = 1, speedIdx = 0;
+var speeds = [1,2,5,10,50];
+var priceHist = [1000];  // 共享价格历史
+var dates = [];
+
+// 4个策略
+var strats = {
+  "金叉死叉": {cash:5000,pos:0,equity:5000,trades:[],ma5:[],ma20:[]},
+  "RSI反转":  {cash:5000,pos:0,equity:5000,trades:[],rsi:[]},
+  "突破买入":  {cash:5000,pos:0,equity:5000,trades:[],high20:[]},
+  "趋势追踪":  {cash:5000,pos:0,equity:5000,trades:[],entryP:0,ma10:[],ma30:[]}
+};
+var selectedStrat = "金叉死叉";
+
+function rand() { seed=(seed*9301+49297)%233280; return seed/233280; }
+
+function genPrice(last, day) {
+  var phase = Math.floor(day/50)%5;
+  var t = 0;
+  switch(phase) {
+    case 0: t=(rand()-0.3)*8+6; break;   // 暴涨📈
+    case 1: t=(rand()-0.5)*14; break;     // 震荡📊
+    case 2: t=(rand()-0.7)*8-6; break;    // 暴跌📉
+    case 3: t=(rand()-0.4)*10+3; break;   // 反弹↗️
+    case 4: t=rand()*22+12; break;        // 超级暴涨🚀
+  }
+  return Math.max(last*0.85, last+t+(rand()-0.5)*10);
+}
+
+function calcMA(arr, n) {
+  if(arr.length<n) return arr[arr.length-1];
+  var s=0; for(var i=arr.length-n;i<arr.length;i++) s+=arr[i];
+  return s/n;
+}
+
+function calcRSI(arr, n) {
+  if(arr.length<n+1) return 50;
+  var g=0,l=0;
+  for(var i=arr.length-n;i<arr.length;i++) {
+    var d=arr[i]-arr[i-1];
+    if(d>0) g+=d; else l-=d;
+  }
+  return l===0?100:100-100/(1+g/l);
+}
+
+function runStrats(price) {
+  // 金叉死叉
+  var s=strats["金叉死叉"];
+  var m5=calcMA(priceHist,5), m20=calcMA(priceHist,20);
+  s.ma5.push(m5); s.ma20.push(m20);
+  if(priceHist.length>21) {
+    var pm5=s.ma5[s.ma5.length-2], pm20=s.ma20[s.ma20.length-2];
+    if(!s.pos && pm5<=pm20 && m5>m20) {
+      s.pos=Math.floor(s.cash/price); s.cash-=s.pos*price;
+      s.trades.push({d:simDay,tp:"买入",p:price,a:s.pos*price,note:"金叉↑"});
+    } else if(s.pos && pm5>=pm20 && m5<m20) {
+      s.cash+=s.pos*price; s.trades.push({d:simDay,tp:"卖出",p:price,a:s.pos*price,note:"死叉↓"}); s.pos=0;
+    }
+  }
+  s.equity=s.cash+s.pos*price;
+  
+  // RSI反转
+  s=strats["RSI反转"];
+  var rsi=calcRSI(priceHist,14); s.rsi.push(rsi);
+  if(priceHist.length>15) {
+    if(!s.pos && rsi<30) {
+      s.pos=Math.floor(s.cash/price); s.cash-=s.pos*price;
+      s.trades.push({d:simDay,tp:"买入",p:price,a:s.pos*price,note:"超卖RSI="+rsi.toFixed(0)});
+    } else if(s.pos && rsi>70) {
+      s.cash+=s.pos*price; s.trades.push({d:simDay,tp:"卖出",p:price,a:s.pos*price,note:"超买RSI="+rsi.toFixed(0)}); s.pos=0;
+    }
+  }
+  s.equity=s.cash+s.pos*price;
+  
+  // 突破买入
+  s=strats["突破买入"];
+  var h20=Math.max.apply(null,priceHist.slice(-20)); s.high20.push(h20);
+  if(priceHist.length>20) {
+    if(!s.pos && price>h20*1.015) {
+      s.pos=Math.floor(s.cash/price); s.cash-=s.pos*price; s.entryP=price;
+      s.trades.push({d:simDay,tp:"买入",p:price,a:s.pos*price,note:"突破↑"});
+    } else if(s.pos) {
+      var pp=(price-s.entryP)/s.entryP*100;
+      if(pp>20||pp<-6||price<h20*0.95) {
+        var nt=pp>20?"🎯止盈":pp<-6?"🛑止损":"📉回落";
+        s.cash+=s.pos*price; s.trades.push({d:simDay,tp:"卖出",p:price,a:s.pos*price,note:nt}); s.pos=0;
+      }
+    }
+  }
+  s.equity=s.cash+s.pos*price;
+  
+  // 趋势追踪
+  s=strats["趋势追踪"];
+  var ma10=calcMA(priceHist,10), ma30=calcMA(priceHist,30);
+  s.ma10.push(ma10); s.ma30.push(ma30);
+  if(priceHist.length>31) {
+    var m10p=s.ma10[s.ma10.length-2], m30p=s.ma30[s.ma30.length-2];
+    if(!s.pos && m10p<=m30p && ma10>ma30) {
+      s.pos=Math.floor(s.cash/price); s.cash-=s.pos*price; s.entryP=price;
+      s.trades.push({d:simDay,tp:"买入",p:price,a:s.pos*price,note:"趋势↑"});
+    } else if(s.pos) {
+      var pp=(price-s.entryP)/s.entryP*100;
+      if(ma10<ma30||pp>25||pp<-8) {
+        var nt=pp>25?"🎯止盈":pp<-8?"🛑止损":"死叉";
+        s.cash+=s.pos*price; s.trades.push({d:simDay,tp:"卖出",p:price,a:s.pos*price,note:nt}); s.pos=0;
+      }
+    }
+  }
+  s.equity=s.cash+s.pos*price;
+}
+
+function nextDay() {
+  simDay++;
+  var d=new Date(2025,5,18+simDay);
+  var ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  dates.push(ds);
+  
+  var newP=genPrice(priceHist[priceHist.length-1],simDay);
+  priceHist.push(newP);
+  
+  runStrats(newP);
+  updateUI(newP);
+  drawChart(selectedStrat);
+}
+
+function togglePlay() {
+  running=!running;
+  document.getElementById('playBtn').textContent=running?'⏸ 暂停':'▶ 继续';
+  document.getElementById('playBtn').className=running?'btn-play':'btn-pause';
+}
+
+function changeSpeed() {
+  speedIdx=(speedIdx+1)%speeds.length; speed=speeds[speedIdx];
+  document.getElementById('speedBadge').textContent=speed+'x';
+  if(timer)clearInterval(timer);
+  timer=setInterval(simTick,1000/speed);
+}
+
+function resetSim() {
+  priceHist=[1000];dates=[];simDay=0;seed=42;
+  for(var k in strats) {
+    var s=strats[k];
+    s.cash=5000;s.pos=0;s.equity=5000;s.trades=[];
+    s.ma5=[];s.ma20=[];s.rsi=[];s.high20=[];s.ma10=[];s.ma30=[];
+  }
+  running=true;
+  document.getElementById('playBtn').textContent='⏸ 暂停';
+  document.getElementById('playBtn').className='btn-play';
+  updateUI(1000);
+  drawChart(selectedStrat);
+  renderStratButtons();
+}
+
+function selectStrat(name) {
+  selectedStrat=name;
+  document.querySelectorAll('.strat-btn').forEach(function(b){
+    b.classList.toggle('active',b.textContent.includes(name));
+  });
+  drawChart(name);
+  updateTradeLog(name);
+  document.getElementById('chartTitle').textContent=name;
+  document.getElementById('logTitle').textContent=name;
+  // 更新当前策略收益
+  var s=strats[name];
+  var ret=(s.equity-5000)/5000*100;
+  document.getElementById('retVal').textContent=(ret>=0?'+':'')+ret.toFixed(2)+'%';
+  document.getElementById('retVal').className=ret>=0?'up':'dn';
+}
+
+function renderStratButtons() {
+  var h='';
+  for(var k in strats) {
+    var s=strats[k],ret=(s.equity-5000)/5000*100;
+    var cls='strat-btn'+(k===selectedStrat?' active':'');
+    h+='<span class="'+cls+'" onclick="selectStrat(\''+k+'\')">'+k+' '+(ret>=0?'+':'')+ret.toFixed(1)+'%</span>';
+  }
+  document.getElementById('stratButtons').innerHTML=h;
+}
+
+function updateUI(price) {
+  var bh=(price-1000)/1000*100;
+  document.getElementById('bhVal').textContent=(bh>=0?'+':'')+bh.toFixed(2)+'%';
+  document.getElementById('bhVal').className=bh>=0?'up':'dn';
+  document.getElementById('dayCount').textContent=simDay+'天';
+  
+  // 找最优策略
+  var best="金叉死叉",bestV=-9999;
+  for(var k in strats) {
+    if(strats[k].equity>bestV){bestV=strats[k].equity;best=k;}
+  }
+  document.getElementById('bestLabel').textContent=best;
+  document.getElementById('bestLabel').className=bh>=0?'up':'dn';
+  
+  // 更新当前策略
+  var s=strats[selectedStrat];
+  document.getElementById('totalVal').innerHTML=s.equity.toFixed(2)+' <span>CNY</span>';
+  var ret=(s.equity-5000)/5000*100;
+  document.getElementById('retVal').textContent=(ret>=0?'+':'')+ret.toFixed(2)+'%';
+  document.getElementById('retVal').className=ret>=0?'up':'dn';
+  
+  renderStratButtons();
+  updateStratComparison();
+  updateTradeLog(selectedStrat);
+}
+
+function updateStratComparison() {
+  var h='';
+  for(var k in strats) {
+    var s=strats[k],ret=(s.equity-5000)/5000*100;
+    var tr=s.trades.length;
+    h+='<div class="strat-item'+(k===selectedStrat?' best':'')+'">'+
+      '<div class="strat-name">'+k+' <span class="strat-eq">'+(ret>=0?'+':'')+ret.toFixed(2)+'%</span></div>'+
+      '<div style="color:#999;font-size:10px">'+tr+'笔交易</div></div>';
+  }
+  document.getElementById('stratComparison').innerHTML=h;
+  
+  // 教学提示
+  var tip='';
+  var topStrat="",topRet=-999;
+  for(var k in strats){
+    var r=(strats[k].equity-5000)/5000*100;
+    if(r>topRet){topRet=r;topStrat=k;}
+  }
+  if(simDay>30) {
+    tip='🏆 当前最优: <b>'+topStrat+'</b> ('+(topRet>=0?'+':'')+topRet.toFixed(2)+'%)<br>';
+    tip+=topRet>bhRet()?'策略跑赢了买入持有！✅':'策略没跑赢买入持有...<br>💡 频繁交易的手续费和错误择时会吃掉利润<br>';
+  }
+  if(simDay>0) {
+    var bhV=(priceHist[priceHist.length-1]-1000)/1000*100;
+    tip+='📈 股票涨了 <b>'+(bhV>=0?'+':'')+bhV.toFixed(2)+'%</b> &nbsp;|&nbsp; ';
+    tip+='⏱ 模拟第 <b>'+simDay+'</b> 天';
+    if(simDay>200) tip+=' (现实约'+Math.round(simDay/5)+'天)';
+    document.getElementById('teachTip').innerHTML=tip;
+  }
+}
+
+function bhRet() { return (priceHist[priceHist.length-1]-1000)/1000*100; }
+
+function updateTradeLog(name) {
+  var s=strats[name],h='';
+  if(s.trades.length===0) { document.getElementById('tradeLog').innerHTML='暂无交易'; document.getElementById('logCount').textContent='0笔'; return; }
+  for(var i=s.trades.length-1;i>=0;i--) {
+    var t=s.trades[i];
+    h+='<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0">'+
+      '<span><span class="'+(t.tp==='买入'?'tag-b':'tag-s')+'" style="background:'+(t.tp==='买入'?'#fff0f0':'#f0fff4')+';color:'+(t.tp==='买入'?'#ff4757':'#2ed573')+';padding:1px 5px;border-radius:3px;font-size:10px">'+t.tp+'</span> '+(dates[t.d]||'')+'</span>'+
+      '<span><b>'+t.p.toFixed(2)+'</b> '+t.a.toFixed(0)+'元 <span style="color:#999;font-size:10px">'+t.note+'</span></span></div>';
+  }
+  document.getElementById('tradeLog').innerHTML=h;
+  document.getElementById('logCount').textContent=s.trades.length+'笔';
+}
+
+function drawChart(name) {
+  var ca=document.getElementById('kc');if(!ca||priceHist.length<2)return;
+  var ct=ca.parentElement,dpr=window.devicePixelRatio||1,w=ct.clientWidth,hgt=ct.clientHeight;
+  ca.width=w*dpr;ca.height=hgt*dpr;ca.style.width=w+'px';ca.style.height=hgt+'px';
+  var cx=ca.getContext('2d');cx.scale(dpr,dpr);
+  
+  var n=priceHist.length;
+  var pad={top:20,bottom:20,left:50,right:10},cw=w-pad.left-pad.right,ch=hgt-pad.top-pad.bottom;
+  var mn=1e9,mx=0;
+  for(var i=0;i<n;i++){if(priceHist[i]<mn)mn=priceHist[i];if(priceHist[i]>mx)mx=priceHist[i]}
+  mn*=0.97;mx*=1.03;var rg=mx-mn||1;
+  function px(i){return pad.left+(i/(n-1))*cw}
+  function py(v){return pad.top+ch-((v-mn)/rg)*ch}
+  
+  // 网格
+  cx.strokeStyle='#e8e8e8';cx.lineWidth=0.5;
+  for(var i=0;i<5;i++){var y=pad.top+(ch/5)*i;cx.beginPath();cx.moveTo(pad.left,y);cx.lineTo(w-pad.right,y);cx.stroke();cx.fillStyle='#999';cx.font='9px sans-serif';cx.textAlign='right';cx.fillText((mx-(rg/5)*i).toFixed(0),pad.left-4,y+4)}
+  
+  // K线（用模拟OHLC）
+  var s=strats[name];
+  var bw=Math.max(1.5,cw/n*0.5);
+  for(var i=1;i<n;i++){
+    var x=px(i),open=priceHist[i-1],close=priceHist[i];
+    var high=Math.max(open,close)*(1+rand()*0.015),low=Math.min(open,close)*(1-rand()*0.015);
+    var isUp=close>=open;
+    cx.fillStyle=isUp?'#ff4757':'#2ed573';cx.strokeStyle=isUp?'#ff4757':'#2ed573';cx.lineWidth=0.5;
+    cx.beginPath();cx.moveTo(x,py(high));cx.lineTo(x,py(low));cx.stroke();
+    var tp=py(Math.max(open,close)),bt=py(Math.min(open,close)),bh=Math.max(1,bt-tp);
+    cx.fillRect(x-bw/2,tp,bw,bh);
+  }
+  
+  // 当前策略的均线
+  if(s.ma5&&s.ma5.length>1){cx.strokeStyle='#f0b429';cx.lineWidth=1.5;cx.beginPath();for(var i=0;i<s.ma5.length;i++){i===0?cx.moveTo(px(i),py(s.ma5[i])):cx.lineTo(px(i),py(s.ma5[i]))}cx.stroke()}
+  if(s.ma20&&s.ma20.length>1){cx.strokeStyle='#ff6b6b';cx.lineWidth=1.5;cx.setLineDash([4,3]);cx.beginPath();for(var i=0;i<s.ma20.length;i++){i===0?cx.moveTo(px(i),py(s.ma20[i])):cx.lineTo(px(i),py(s.ma20[i]))}cx.stroke();cx.setLineDash([])}
+  
+  // 买卖点
+  for(var i=0;i<s.trades.length;i++){
+    var t=s.trades[i],idx=t.d,isBuy=t.tp==='买入';
+    if(idx>=n)continue;var x=px(idx),y=py(priceHist[idx]);
+    cx.fillStyle=isBuy?'#2ed573':'#ff4757';cx.beginPath();
+    if(isBuy){cx.moveTo(x,y-10);cx.lineTo(x-6,y-2);cx.lineTo(x+6,y-2)}else{cx.moveTo(x,y+10);cx.lineTo(x-6,y+2);cx.lineTo(x+6,y+2)}cx.fill();
+    cx.fillStyle='#fff';cx.font='bold 7px sans-serif';cx.textAlign='center';cx.fillText(isBuy?'B':'S',x,isBuy?y-11:y+14);
+  }
+  
+  // 日期
+  cx.fillStyle='#999';cx.font='8px sans-serif';cx.textAlign='center';
+  var steps=[0];if(n>2){steps.push(Math.floor(n/2));steps.push(n-1)}
+  for(var i=0;i<steps.length;i++){cx.fillText(dates[steps[i]]||'',px(steps[i]),hgt-2)}
+}
+
+function simTick(){if(running)nextDay();}
+
+// 启动
+var timer=setInterval(simTick,1000/speed);
+renderStratButtons();
+selectStrat("金叉死叉");
+updateStratComparison();
+document.getElementById('teachTip').innerHTML='🚀 <b>模拟启动！</b><br>4个策略同时在跑，选择不同的策略查看它们的交易<br><br><b>金叉死叉</b>：MA5上穿MA20买，下穿卖（慢但稳）<br><b>RSI反转</b>：超卖(<30)买，超买(>70)卖（抄底逃顶）<br><b>突破买入</b>：创新高买，回落卖（追涨）<br><b>趋势追踪</b>：MA10上穿MA30买，死叉/止盈/止损卖<br><br>看看哪个策略赚最多！🏆';
+
+window.addEventListener('resize',function(){drawChart(selectedStrat)});
+</script>
+</body></html>
+`, {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'}}); } };
