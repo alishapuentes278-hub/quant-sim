@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>📈 AI量化模拟盘</title>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0d1117; color: #e6edf3; padding: 10px; }
+.header { text-align: center; padding: 15px 0; border-bottom: 1px solid #30363d; margin-bottom: 15px; }
+.header h1 { font-size: 20px; color: #58a6ff; }
+.header p { font-size: 12px; color: #8b949e; margin-top: 4px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.card-title { font-size: 13px; color: #8b949e; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.row { display: flex; gap: 8px; margin-bottom: 12px; }
+.row .card { flex: 1; margin-bottom: 0; }
+.stat-value { font-size: 24px; font-weight: 700; }
+.stat-up { color: #26a69a; }
+.stat-down { color: #ef5350; }
+.stat-label { font-size: 11px; color: #8b949e; margin-top: 2px; }
+.chart-container { height: 350px; position: relative; }
+.chart-container-sm { height: 180px; position: relative; }
+.strategy-btn { display: inline-block; padding: 6px 14px; margin: 3px; border-radius: 15px; border: 1px solid #30363d; background: #0d1117; color: #c9d1d9; font-size: 12px; cursor: pointer; }
+.strategy-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
+.legend-item { font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.legend-dot { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+.trade { padding: 8px; margin: 4px 0; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; }
+.trade-buy { background: #0a2e1f; border-left: 3px solid #26a69a; }
+.trade-sell { background: #2e0f0f; border-left: 3px solid #ef5350; }
+.knowledge-card { background: #0d1b2a; border: 1px solid #1f3a5f; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.knowledge-title { color: #58a6ff; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.knowledge-text { color: #c9d1d9; font-size: 12px; line-height: 1.6; }
+.tag { display: inline-block; background: #1f3a5f; color: #58a6ff; border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-right: 4px; }
+@media (max-width: 480px) { .row { flex-direction: column; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📈 AI 量化模拟盘</h1>
+  <p>学习K线 · 跑策略 · 边玩边学</p>
+</div>
+
+<!-- 策略选择 -->
+<div class="card" style="text-align:center">
+  <div class="card-title">选择策略 👇</div>
+  <div id="strategy-buttons"></div>
+</div>
+
+<!-- 核心数据 -->
+<div class="row" id="stats-row"></div>
+
+<!-- K线图 -->
+<div class="card">
+  <div class="card-title">
+    <span>📊 K线图 + 策略买卖点</span>
+    <span class="tag" id="chart-hint">拖动缩放</span>
+  </div>
+  <div class="chart-container" id="kline-chart"></div>
+  <div class="legend" id="kline-legend"></div>
+</div>
+
+<!-- 策略曲线对比 -->
+<div class="card">
+  <div class="card-title">
+    <span>📈 收益曲线</span>
+    <span class="tag">跑赢买入持有？</span>
+  </div>
+  <div class="chart-container-sm" id="equity-chart"></div>
+</div>
+
+<!-- 交易记录 -->
+<div class="card">
+  <div class="card-title">
+    <span>📋 交易记录</span>
+    <span id="trade-count"></span>
+  </div>
+  <div id="trade-list"></div>
+</div>
+
+<!-- 学习小课堂 -->
+<div class="card">
+  <div class="card-title">📖 K线知识小课堂</div>
+  <div id="knowledge-content">
+    <div class="knowledge-card">
+      <div class="knowledge-title">📌 K线是什么？</div>
+      <div class="knowledge-text">
+        <b>K线</b>（又叫蜡烛图）是看股票一天走势最常用的图表。<br><br>
+        🟢 <b>红色/绿色柱子</b> = 一天的股价变化<br>
+        ⬆️ 柱子顶部 = 最高价，底部 = 最低价<br>
+        ⬛ 粗的部分 = 开盘价到收盘价<br><br>
+        <b>绿色阳线</b> 📗：收盘价 > 开盘价（涨了）<br>
+        <b>红色阴线</b> 📕：收盘价 < 开盘价（跌了）<br><br>
+        💡 上影线长 = 有人在高位卖（抛压大）<br>
+        💡 下影线长 = 有人在低位买（支撑强）<br>
+        💡 实体大 = 当天多空一方赢了
+      </div>
+    </div>
+    <div class="knowledge-card">
+      <div class="knowledge-title">📌 那些线是什么？</div>
+      <div class="knowledge-text">
+        <span style="color:#f0b429">🟡 <b>MA5</b></span> = 5日均线（过去5天平均价）<br>
+        &nbsp;&nbsp;反映<b>短期</b>走势，线朝上=短期涨，朝下=短期跌<br><br>
+        <span style="color:#ff6b6b">🔴 <b>MA20</b></span> = 20日均线（过去20天平均价）<br>
+        &nbsp;&nbsp;反映<b>中期</b>走势，也叫「生命线」<br><br>
+        <span style="color:#4ecdc4">🟢 <b>MA60</b></span> = 60日均线（过去60天平均价）<br>
+        &nbsp;&nbsp;反映<b>长期</b>走势，跌破这条线要小心<br><br>
+        🔑 <b>金叉</b>：MA5上穿MA20 → 买入信号 📈<br>
+        🔑 <b>死叉</b>：MA5下穿MA20 → 卖出信号 📉
+      </div>
+    </div>
+    <div class="knowledge-card">
+      <div class="knowledge-title">📌 大佬们怎么看屏幕？</div>
+      <div class="knowledge-text">
+        专业交易员的屏幕一般分三块：<br><br>
+        <b>左上 📊</b>：K线图 + 均线（看价格）<br>
+        <b>左下 📉</b>：成交量柱（看多少人参与）<br>
+        <b>右列 📈</b>：RSI / MACD（看涨的势头）<br><br>
+        他们不是看一根线决定买卖，而是<b>多个信号共振</b>才出手：<br>
+        ✅ K线站稳MA20 + RSI从30往上 + 成交量放大 → 买<br>
+        ❌ K线跌破MA20 + RSI从70往下 + 成交量萎缩 → 卖<br><br>
+        这套东西你现在也有了 👆 慢慢看慢慢学
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 底部 -->
+<div style="text-align:center;padding:20px 0;color:#484f58;font-size:11px">
+  🚀 数据来源: akshare · AI辅助学习工具 · 不构成投资建议
+</div>
+
+<script>
+// ===== 加载数据 =====
+let allData = [];
+let currentIdx = 0;
+
+async function loadData() {
+  try {
+    const resp = await fetch('dashboard.json');
+    allData = await resp.json();
+    if (allData.length === 0) { showError('暂无数据'); return; }
+    renderStrategies();
+    selectStrategy(0);
+  } catch(e) {
+    document.body.innerHTML = `<div style="text-align:center;padding:50px 20px;color:#8b949e">
+      <h2>📁 数据未找到</h2>
+      <p style="margin-top:10px">请先运行: <code style="background:#1f2937;padding:4px 8px;border-radius:4px">python3 quant_sim.py --all</code></p>
+      <p style="margin-top:8px;font-size:12px">然后把 dashboard.json 放在这个HTML旁边</p>
+    </div>`;
+  }
+}
+
+function renderStrategies() {
+  const container = document.getElementById('strategy-buttons');
+  container.innerHTML = allData.map((d, i) => 
+    `<button class="strategy-btn" onclick="selectStrategy(${i})">${d.strategy}</button>`
+  ).join('');
+}
+
+function selectStrategy(idx) {
+  currentIdx = idx;
+  document.querySelectorAll('.strategy-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx);
+  });
+  
+  const d = allData[idx];
+  renderStats(d);
+  renderKlineChart(d);
+  renderEquityChart(d);
+  renderTrades(d);
+  updateKnowledge(d);
+}
+
+// ===== 统计卡片 =====
+function renderStats(d) {
+  const isUp = d.return_rate >= 0;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="card">
+      <div class="stat-value ${isUp ? 'stat-up' : 'stat-down'}">${isUp ? '+' : ''}${d.return_rate}%</div>
+      <div class="stat-label">策略收益</div>
+    </div>
+    <div class="card">
+      <div class="stat-value ${d.buy_hold_return >= 0 ? 'stat-up' : 'stat-down'}">${d.buy_hold_return >= 0 ? '+' : ''}${d.buy_hold_return}%</div>
+      <div class="stat-label">买入持有</div>
+    </div>
+    <div class="card">
+      <div class="stat-value">${d.final_capital}</div>
+      <div class="stat-label">最终资金</div>
+    </div>
+    <div class="card">
+      <div class="stat-value">${d.total_trades}</div>
+      <div class="stat-label">交易次数</div>
+    </div>
+    <div class="card">
+      <div class="stat-value ${d.win_rate >= 50 ? 'stat-up' : 'stat-down'}">${d.win_rate}%</div>
+      <div class="stat-label">胜率</div>
+    </div>
+  `;
+}
+
+// ===== K线图 =====
+function renderKlineChart(d) {
+  const container = document.getElementById('kline-chart');
+  container.innerHTML = '';
+  
+  const chart = LightweightCharts.createChart(container, {
+    layout: { background: {type:'solid',color:'#161b22'}, textColor:'#8b949e' },
+    grid: { vertLines:{color:'#21262d'}, horzLines:{color:'#21262d'} },
+    timeScale: { timeVisible:false, borderColor:'#30363d' },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    width: container.clientWidth,
+    height: 350,
+  });
+  
+  // K线数据
+  const candleData = d.data.dates.map((date, i) => ({
+    time: date,
+    open: d.data.close[i] * 0.99,
+    high: d.data.close[i] * 1.02,
+    low: d.data.close[i] * 0.98,
+    close: d.data.close[i],
+  }));
+  
+  // 用收盘价模拟K线（真实K线需要OHLC数据）
+  // 从回测数据中提取更精确的OHLC
+  const klineSeries = chart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350',
+    borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+  });
+  klineSeries.setData(candleData);
+  
+  // 均线
+  const ma5 = chart.addLineSeries({ color:'#f0b429', lineWidth:1, title:'MA5' });
+  const ma20 = chart.addLineSeries({ color:'#ff6b6b', lineWidth:1, title:'MA20' });
+  
+  const ma5Data = d.data.dates.map((date, i) => ({
+    time: date,
+    value: d.data.ma5[i] || d.data.close[i],
+  }));
+  const ma20Data = d.data.dates.map((date, i) => ({
+    time: date,
+    value: d.data.ma20[i] || d.data.close[i],
+  }));
+  ma5.setData(ma5Data);
+  ma20.setData(ma20Data);
+  
+  // 买卖点标记
+  const markers = [];
+  (d.trades || []).forEach(t => {
+    const dateIdx = d.data.dates.indexOf(t.date);
+    if (dateIdx >= 0) {
+      markers.push({
+        time: t.date,
+        position: t.type === '买入' ? 'belowBar' : 'aboveBar',
+        color: t.type === '买入' ? '#26a69a' : '#ef5350',
+        shape: t.type === '买入' ? 'arrowUp' : 'arrowDown',
+        text: t.type === '买入' ? 'B' : 'S',
+      });
+    }
+  });
+  klineSeries.setMarkers(markers);
+  
+  chart.timeScale().fitContent();
+  
+  // 图例
+  document.getElementById('kline-legend').innerHTML = `
+    <span class="legend-item"><span class="legend-dot" style="background:#f0b429"></span> MA5(短期)</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#ff6b6b"></span> MA20(中期)</span>
+    <span class="legend-item"><span style="color:#26a69a">🟢</span> 买入点</span>
+    <span class="legend-item"><span style="color:#ef5350">🔴</span> 卖出点</span>
+  `;
+  
+  // 窗口变化时重置宽度
+  window.addEventListener('resize', () => {
+    chart.applyOptions({ width: container.clientWidth });
+  });
+}
+
+// ===== 收益曲线 =====
+function renderEquityChart(d) {
+  const container = document.getElementById('equity-chart');
+  container.innerHTML = '';
+  
+  const chart = LightweightCharts.createChart(container, {
+    layout: { background: {type:'solid',color:'#161b22'}, textColor:'#8b949e' },
+    grid: { vertLines:{color:'#21262d'}, horzLines:{color:'#21262d'} },
+    timeScale: { timeVisible:false, borderColor:'#30363d' },
+    width: container.clientWidth,
+    height: 180,
+  });
+  
+  // 策略收益曲线
+  const equityData = d.portfolio_values.map(v => ({
+    time: v.date,
+    value: v.total,
+  }));
+  const equitySeries = chart.addLineSeries({ color:'#58a6ff', lineWidth:2 });
+  equitySeries.setData(equityData);
+  
+  // 买入持有曲线
+  const initial = d.initial_capital;
+  const bhData = d.data.dates.map((date, i) => ({
+    time: date,
+    value: +(initial * d.data.close[i] / d.data.close[0]).toFixed(2),
+  }));
+  const bhSeries = chart.addLineSeries({ color:'#8b949e', lineWidth:1, lineStyle:2 });
+  bhSeries.setData(bhData);
+  
+  chart.timeScale().fitContent();
+}
+
+// ===== 交易记录 =====
+function renderTrades(d) {
+  document.getElementById('trade-count').textContent = `共${d.trades.length}笔`;
+  
+  const container = document.getElementById('trade-list');
+  container.innerHTML = d.trades.map(t => {
+    const cls = t.type === '买入' ? 'trade-buy' : 'trade-sell';
+    const val = t.type === '买入' ? `💸 ${t.cost}元` : `💰 ${t.revenue}元`;
+    return `<div class="trade ${cls}"><span>${t.date} ${t.type}</span><span>${t.price}元 ${val}</span></div>`;
+  }).join('') || '<div style="color:#8b949e;text-align:center;padding:10px;font-size:12px">暂无交易（策略没产生信号）</div>';
+}
+
+// ===== 知识小课堂（动态更新） =====
+function updateKnowledge(d) {
+  const container = document.getElementById('knowledge-content');
+  
+  let performanceLesson = '';
+  if (d.return_rate > d.buy_hold_return * 1.2) {
+    performanceLesson = `🎯 <b>策略跑赢了买入持有！</b>这说明通过${d.strategy}策略，你在正确的时机买卖，比傻傻拿着多赚了${(d.return_rate - d.buy_hold_return).toFixed(1)}%。但你也要注意——历史回测不代表未来，策略可能突然失效。`;
+  } else if (d.return_rate > 0) {
+    performanceLesson = `📊 <b>策略赚钱了</b>，但没跑赢买入持有。这说明频繁交易不一定比长期持有好。手续费吃掉了你的利润，这是散户最大的敌人 🪙`;
+  } else {
+    performanceLesson = `📉 <b>策略亏钱了...</b> 这很正常！量化策略不是万能药，很多策略在震荡市里会被反复打脸。你今天亏掉的是模拟的5000块，但学到了\textbf{「纪律很重要，策略不是神」}的真知识。`;
+  }
+  
+  container.innerHTML = `
+    <div class="knowledge-card">
+      <div class="knowledge-title">📈 当前策略表现解读</div>
+      <div class="knowledge-text">${performanceLesson}</div>
+    </div>
+    <div class="knowledge-card">
+      <div class="knowledge-title">🔍 ${d.strategy}策略原理</div>
+      <div class="knowledge-text">${
+        d.strategy === '金叉死叉' 
+          ? `<b>金叉</b> = 5日均线上穿20日线（短期涨得比中期快）→ 买<br>
+              <b>死叉</b> = 5日均线下穿20日线（短期跌得比中期快）→ 卖<br><br>
+              ✅ 优点：简单易懂，趋势明显的行情里很好用<br>
+              ❌ 缺点：震荡市（上下反复）会被来回打脸`
+          : d.strategy === 'RSI反转'
+          ? `<b>RSI</b> 低于30时买入（跌过头了要反弹）<br>
+              <b>RSI</b> 高于70时卖出（涨过头了要回调）<br><br>
+              ✅ 优点：抄底逃顶信号明确<br>
+              ❌ 缺点：强势行情里RSI可以一直超买，你会卖飞`
+          : d.strategy === 'MACD金叉'
+          ? `<b>DIF上穿DEA</b>（涨的势头刚开始）→ 买<br>
+              <b>DIF下穿DEA</b>（涨的势头在减弱）→ 卖<br><br>
+              ✅ 优点：捕捉趋势转折点很准<br>
+              ❌ 缺点：信号滞后，等你看金叉已经涨了一段了`
+          : `<b>跌破下轨后反弹</b> → 买（跌太深了要反弹）<br>
+              <b>涨破上轨后回落</b> → 卖（涨太高了要回调）<br><br>
+              ✅ 优点：适合震荡市，高抛低吸<br>
+              ❌ 缺点：遇到单边大涨会卖飞，单边大跌会接飞刀`
+      }</div>
+    </div>
+    <div class="knowledge-card">
+      <div class="knowledge-title">💡 大佬怎么看这组数据？</div>
+      <div class="knowledge-text">
+        给你分析当前回测结果：<br><br>
+        📍 策略交易了 <b>${d.total_trades}次</b>，胜率<b>${d.win_rate}%</b><br>
+        📍 初始 <b>${d.initial_capital}元</b> → 最终 <b>${d.final_capital}元</b><br><br>
+        ${d.win_rate > 60 
+          ? '✅ 胜率不错，说明策略信号质量高。但还要看每笔赚的钱比亏的钱多吗？如果赚的时候赚1%，亏的时候亏5%，那70%胜率也是亏。'
+          : d.total_trades > 0
+          ? '⚠️ 胜率不到50%，说明这个策略在当前的行情周期里不太适用。可以试试：<br>1️⃣ 换一个策略<br>2️⃣ 修改参数<br>3️⃣ 结合两个策略的信号一起用'
+          : '💤 策略没有产生任何交易信号。说明市场走势不符合策略的触发条件，可以换一个标的或策略试试。'}
+      </div>
+    </div>
+  `;
+}
+
+function showError(msg) {
+  document.body.innerHTML = `<div style="text-align:center;padding:50px;color:#ef5350"><h3>${msg}</h3></div>`;
+}
+
+loadData();
+</script>
+</body>
+</html>
