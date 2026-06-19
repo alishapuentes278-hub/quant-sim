@@ -1,68 +1,112 @@
-
-// ===== 实时股票K线 Worker =====
-// 每次请求都从东方财富API拉取实时数据
-
-// 股票代码 → 市场ID映射
-// 
-  code = code.replace(/[^0-9]/g, '');
-  if (code.startsWith('6') || code.startsWith('9')) return '1.' + code;
-  if (code.startsWith('0') || code.startsWith('3')) return '0.' + code;
-  if (code.startsWith('8') || code.startsWith('4')) return '0.' + code;
-  return '1.' + code;
-}
-
-function getName(code) {
-  const names = {
-    '000688': '科创50', '000001': '上证指数', '399001': '深证成指',
-    '399006': '创业板指', '000300': '沪深300', '000016': '上证50',
-    '600519': '贵州茅台', '000333': '美的集团', '002415': '海康威视',
-    '300750': '宁德时代', '601318': '中国平安', '600036': '招商银行',
-    '000858': '五粮液', '002594': '比亚迪', '600900': '长江电力',
-  };
-  return names[code] || code + '(A股)';
-}
+// 📊 实时K线模拟盘 v5 — Yahoo Finance 版
+// 每次请求从Yahoo Finance获取实时A股/港股/美股数据
+// 无需API key，全球可用
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    
-    // API路由：获取实时K线数据
+
+    // ===== API路由：获取K线数据 =====
     if (url.pathname === '/api/stock') {
       const code = url.searchParams.get('code') || '000688';
       const klt = url.searchParams.get('klt') || '101';
-      const secid = getSecId(code);
       
-      const apiUrl = 'https://push2his.eastmoney.com/api/qt/stock/kline/get' +
-        '?secid=' + secid +
-        '&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57' +
-        '&klt=' + klt + '&fqt=1&end=20500101&lmt=120';
+      // 天数映射
+      const daysMap = { '101': '1y', '102': '2y', '103': '5y' };
+      const range = daysMap[klt] || '1y';
+      
+      // 股票代码转Yahoo格式
+      let cleanCode = code.replace(/[^0-9]/g, '');
+      let yahooCode;
+      if (cleanCode.startsWith('6') || cleanCode.startsWith('9')) {
+        yahooCode = cleanCode + '.SS';
+      } else if (cleanCode.startsWith('0') || cleanCode.startsWith('3') || cleanCode.startsWith('2')) {
+        yahooCode = cleanCode + '.SZ';
+      } else {
+        yahooCode = cleanCode + '.SS';
+      }
+      
+      const apiUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/' +
+        yahooCode + '?range=' + range + '&interval=1d';
       
       try {
-        const resp = await fetch(apiUrl, { headers: { 'Referer': 'https://quote.eastmoney.com/' } });
-        const data = await resp.json();
+        let resp = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
         
-        if (data && data.data && data.data.klines) {
-          const result = {
-            code: code,
-            name: getName(code),
-            klines: data.data.klines,
-          };
-          return new Response(JSON.stringify(result), {
+        // 如果第一次失败，换交易所再试
+        if (!resp.ok) {
+          let altCode;
+          if (cleanCode.startsWith('6')) {
+            altCode = cleanCode + '.SZ';
+          } else {
+            altCode = cleanCode + '.SS';
+          }
+          resp = await fetch(
+            'https://query1.finance.yahoo.com/v8/finance/chart/' + altCode + '?range=' + range + '&interval=1d',
+            { headers: { 'User-Agent': 'Mozilla/5.0' } }
+          );
+          yahooCode = altCode;
+        }
+        
+        if (!resp.ok) {
+          return new Response(JSON.stringify({
+            error: '找不到股票 ' + cleanCode + '，请检查代码是否正确（沪市6开头，深市0/3开头）'
+          }), {
             headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' },
           });
         }
         
-        return new Response(JSON.stringify({ error: '未获取到数据，请检查股票代码' }), {
+        const data = await resp.json();
+        const result = data.chart.result[0];
+        const timestamps = result.timestamp;
+        const quotes = result.indicators.quote[0];
+        
+        if (!quotes || !quotes.close || quotes.close.length < 5) {
+          return new Response(JSON.stringify({
+            error: '数据太少，换个股票或周期试试'
+          }), {
+            headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' },
+          });
+        }
+        
+        // Yahoo返回：最新→最旧，翻转成 最旧→最新
+        const klines = [];
+        for (let i = timestamps.length - 1; i >= 0; i--) {
+          if (!quotes.close[i]) continue;
+          const d = new Date(timestamps[i] * 1000);
+          const dateStr = d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+          klines.push(
+            dateStr + ',' +
+            (quotes.open[i] || quotes.close[i]).toFixed(2) + ',' +
+            (quotes.high[i] || quotes.close[i]).toFixed(2) + ',' +
+            (quotes.low[i] || quotes.close[i]).toFixed(2) + ',' +
+            quotes.close[i].toFixed(2) + ',' +
+            Math.round(quotes.volume[i] || 0)
+          );
+        }
+        
+        const meta = result.meta;
+        return new Response(JSON.stringify({
+          code: cleanCode,
+          name: meta.symbol || yahooCode,
+          klines: klines,
+        }), {
           headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' },
         });
+        
       } catch(e) {
-        return new Response(JSON.stringify({ error: '数据源连接失败: ' + e.message }), {
+        return new Response(JSON.stringify({
+          error: '获取数据失败: ' + e.message
+        }), {
           headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' },
         });
       }
     }
-    
-    // 首页 → 返回HTML页面
+
+    // ===== 首页：返回HTML页面（带完整前端代码） =====
     return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -105,11 +149,11 @@ canvas { width: 100%; height: 100%; display: block; }
 
 <div class="header">
   <h1>📊 实时K线模拟盘</h1>
-  <p>输入股票代码 · 看实时K线 · <span id="update-time" style="color:#484f58"></span></p>
+  <p>输入股票代码 · 看实时K线</p>
 </div>
 
 <div class="search-box">
-  <input type="text" id="stock-input" placeholder="输入股票代码，如 000688" value="000688">
+  <input type="text" id="stock-input" placeholder="股票代码，如 000688" value="000688">
   <button onclick="searchStock()">🔍 查看</button>
 </div>
 
@@ -134,11 +178,12 @@ canvas { width: 100%; height: 100%; display: block; }
 <div class="card" id="info-card" style="display:none">
   <div class="card-title">📖 怎么看K线</div>
   <div style="font-size:12px;color:#c9d1d9;line-height:1.6">
-    🟢 <b>绿色阳线</b> = 收盘价 > 开盘价（涨了）<br>
-    🔴 <b>红色阴线</b> = 收盘价 < 开盘价（跌了）<br>
-    <span style="color:#f0b429">— <b>MA5</b></span> = 5日均线（短期趋势）<br>
-    <span style="color:#ff6b6b">— <b>MA20</b></span> = 20日均线（中期趋势）<br>
-    上影线长 = 抛压大 · 下影线长 = 有支撑
+    🟢 绿色阳线 = 收盘价 > 开盘价（涨了）<br>
+    🔴 红色阴线 = 收盘价 < 开盘价（跌了）<br>
+    <span style="color:#f0b429">— MA5</span> = 5日均线（短期趋势）<br>
+    <span style="color:#ff6b6b">— MA20</span> = 20日均线（中期趋势）<br>
+    上影线长 = 抛压大 · 下影线长 = 有支撑<br>
+    数据来源: Yahoo Finance
   </div>
 </div>
 
@@ -149,17 +194,16 @@ let chartData = null;
 
 function selectTimeframe(kl) {
   currentKL = kl;
-  document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.toggle('active', b.getAttribute('onclick').includes(kl)));
+  document.querySelectorAll('.timeframe-btn').forEach(function(b) {
+    b.classList.toggle('active', b.textContent.includes(kl === '101' ? '日K' : kl === '102' ? '周K' : '月K'));
+  });
   searchStock();
 }
 
 function searchStock() {
   const input = document.getElementById('stock-input');
-  let code = input.value.trim();
-  if (!code) { code = '000688'; input.value = code; }
-  // 去除非数字
-  code = code.replace(/[^0-9]/g, '');
-  if (code.length < 6) { code = code.padEnd(6, '0').substring(0, 6); }
+  let code = input.value.trim().replace(/[^0-9]/g, '');
+  if (!code || code.length < 6) { code = '000688'; }
   currentCode = code;
   input.value = code;
   fetchData();
@@ -176,28 +220,26 @@ async function fetchData() {
     const data = await resp.json();
     
     if (data.error) {
-      main.innerHTML = '<div class="error-msg">❌ ' + data.error + '</div>';
+      main.innerHTML = '<div class="error-msg">' + data.error + '</div>';
       return;
     }
     
     if (!data.klines || data.klines.length < 5) {
-      main.innerHTML = '<div class="error-msg">❌ 数据太少，换个股票代码试试</div>';
+      main.innerHTML = '<div class="error-msg">数据太少，换个股票或周期试试</div>';
       return;
     }
     
     chartData = data;
     renderPage(data);
-    document.getElementById('update-time').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
     document.getElementById('info-card').style.display = 'block';
     
   } catch(e) {
-    main.innerHTML = '<div class="error-msg">❌ 网络错误: ' + e.message + '</div>';
+    main.innerHTML = '<div class="error-msg">网络错误: ' + e.message + '</div>';
   }
 }
 
 function renderPage(d) {
   const klines = d.klines;
-  const n = klines.length;
   
   // 解析数据
   const dates = [], opens = [], highs = [], lows = [], closes = [], volumes = [];
@@ -211,47 +253,43 @@ function renderPage(d) {
     volumes.push(parseInt(parts[5]) || 0);
   }
   
+  const n = closes.length;
+  
   // 计算MA5和MA20
   const ma5 = [], ma20 = [];
   for (let i = 0; i < n; i++) {
-    if (i >= 4) {
-      let sum = 0; for (let j = i-4; j <= i; j++) sum += closes[j];
-      ma5.push(sum / 5);
-    } else { ma5.push(closes[i]); }
-    if (i >= 19) {
-      let sum = 0; for (let j = i-19; j <= i; j++) sum += closes[j];
-      ma20.push(sum / 20);
-    } else { ma20.push(closes[i]); }
+    if (i >= 4) { let s=0; for(let j=i-4;j<=i;j++) s+=closes[j]; ma5.push(s/5); }
+    else { ma5.push(closes[i]); }
+    if (i >= 19) { let s=0; for(let j=i-19;j<=i;j++) s+=closes[j]; ma20.push(s/20); }
+    else { ma20.push(closes[i]); }
   }
   
   // 统计
   const latest = closes[n-1];
   const change = latest - closes[0];
-  const changePct = (change / closes[0] * 100);
+  const changePct = change / closes[0] * 100;
   const high = Math.max(...highs);
   const low = Math.min(...lows);
-  const avgVol = Math.round(volumes.reduce((a,b)=>a+b,0) / n);
+  const avgVol = Math.round(volumes.reduce(function(a,b){return a+b;},0) / n);
   
-  // 渲染统计
-  main.innerHTML = 
+  // 渲染统计卡片 + 图表容器
+  main.innerHTML =
     '<div class="row">' +
-      '<div class="card"><div class="stat-value ' + (change >= 0 ? 'stat-up' : 'stat-down') + '">' + latest.toFixed(2) + '</div><div class="stat-label">最新价</div></div>' +
-      '<div class="card"><div class="stat-value ' + (change >= 0 ? 'stat-up' : 'stat-down') + '">' + (change >= 0 ? '+' : '') + changePct.toFixed(2) + '%</div><div class="stat-label">区间涨跌</div></div>' +
+      '<div class="card"><div class="stat-value ' + (change>=0?'stat-up':'stat-down') + '">' + latest.toFixed(2) + '</div><div class="stat-label">最新价</div></div>' +
+      '<div class="card"><div class="stat-value ' + (change>=0?'stat-up':'stat-down') + '">' + (change>=0?'+':'') + changePct.toFixed(2) + '%</div><div class="stat-label">区间涨跌</div></div>' +
       '<div class="card"><div class="stat-value">' + high.toFixed(2) + '</div><div class="stat-label">最高</div></div>' +
       '<div class="card"><div class="stat-value">' + low.toFixed(2) + '</div><div class="stat-label">最低</div></div>' +
-      '<div class="card"><div class="stat-value">' + (avgVol / 10000).toFixed(0) + '万</div><div class="stat-label">均量</div></div>' +
+      '<div class="card"><div class="stat-value">' + (avgVol/10000).toFixed(0) + '万</div><div class="stat-label">均量</div></div>' +
     '</div>' +
-    '<div class="card"><div class="card-title"><span>📊 K线图</span><span class="tag">' + d.name + ' (' + currentCode + ')</span></div><div class="chart-box"><canvas id="kline-canvas"></canvas></div></div>' +
-    '<div class="card"><div class="card-title"><span>📈 走势图</span><span class="tag">收盘价曲线</span></div><div class="chart-box" style="height:200px"><canvas id="line-canvas"></canvas></div></div>';
+    '<div class="card"><div class="card-title"><span>K线图</span><span class="tag">' + d.name + ' (' + currentCode + ')</span></div><div class="chart-box"><canvas id="kline-canvas"></canvas></div></div>' +
+    '<div class="card"><div class="card-title"><span>收盘价走势</span><span class="tag">' + d.name + '</span></div><div class="chart-box" style="height:200px"><canvas id="line-canvas"></canvas></div></div>';
   
-  // 画图
-  setTimeout(() => drawKline('kline-canvas', dates, opens, highs, lows, closes, ma5, ma20, d.trades || []), 50);
-  setTimeout(() => drawLine('line-canvas', dates, closes), 50);
+  setTimeout(function() { drawKline(dates, opens, highs, lows, closes, ma5, ma20); }, 50);
+  setTimeout(function() { drawLine(dates, closes); }, 50);
 }
 
-// ===== 画K线（纯Canvas，无外部依赖） =====
-function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trades) {
-  const canvas = document.getElementById(canvasId);
+function drawKline(dates, opens, highs, lows, closes, ma5, ma20) {
+  const canvas = document.getElementById('kline-canvas');
   if (!canvas) return;
   const container = canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
@@ -268,8 +306,8 @@ function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trade
   const pad = { top: 20, bottom: 20, left: 50, right: 10 };
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
-  const minP = Math.min(...lows) * 0.98;
-  const maxP = Math.max(...highs) * 1.02;
+  const minP = Math.min.apply(null, lows) * 0.98;
+  const maxP = Math.max.apply(null, highs) * 1.02;
   const range = maxP - minP || 1;
   
   function px(i) { return pad.left + (i / (n-1)) * cw; }
@@ -287,7 +325,7 @@ function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trade
     ctx.fillText((maxP - (range / 5) * i).toFixed(1), pad.left - 4, y + 4);
   }
   
-  // 蜡烛
+  // 蜡烛图
   const barW = Math.max(2, cw / n * 0.6);
   for (let i = 0; i < n; i++) {
     const x = px(i);
@@ -308,8 +346,7 @@ function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trade
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
-    const x = px(i), y = py(ma5[i]);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    i === 0 ? ctx.moveTo(px(i), py(ma5[i])) : ctx.lineTo(px(i), py(ma5[i]));
   }
   ctx.stroke();
   
@@ -319,8 +356,7 @@ function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trade
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
-    const x = px(i), y = py(ma20[i]);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    i === 0 ? ctx.moveTo(px(i), py(ma20[i])) : ctx.lineTo(px(i), py(ma20[i]));
   }
   ctx.stroke();
   ctx.setLineDash([]);
@@ -329,15 +365,13 @@ function drawKline(canvasId, dates, opens, highs, lows, closes, ma5, ma20, trade
   ctx.fillStyle = '#8b949e';
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
-  const steps = [0, Math.floor(n/3), Math.floor(n*2/3), n-1];
-  for (const i of steps) {
+  [0, Math.floor(n/3), Math.floor(n*2/3), n-1].forEach(function(i) {
     ctx.fillText(dates[i].substring(5), px(i), h - 2);
-  }
+  });
 }
 
-// ===== 走势线 =====
-function drawLine(canvasId, dates, values) {
-  const canvas = document.getElementById(canvasId);
+function drawLine(dates, values) {
+  const canvas = document.getElementById('line-canvas');
   if (!canvas) return;
   const container = canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
@@ -354,8 +388,8 @@ function drawLine(canvasId, dates, values) {
   const pad = { top: 10, bottom: 15, left: 10, right: 10 };
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
-  const minV = Math.min(...values) * 0.98;
-  const maxV = Math.max(...values) * 1.02;
+  const minV = Math.min.apply(null, values) * 0.98;
+  const maxV = Math.max.apply(null, values) * 1.02;
   const range = maxV - minV || 1;
   
   function px(i) { return pad.left + (i / (n-1)) * cw; }
@@ -371,7 +405,7 @@ function drawLine(canvasId, dates, values) {
   ctx.closePath();
   ctx.fill();
   
-  // 线
+  // 走势线
   ctx.strokeStyle = '#58a6ff';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -381,9 +415,8 @@ function drawLine(canvasId, dates, values) {
   ctx.stroke();
 }
 
-// ===== 启动 =====
+// 启动
 window.addEventListener('load', function() {
-  // 按回车搜索
   document.getElementById('stock-input').addEventListener('keyup', function(e) {
     if (e.key === 'Enter') searchStock();
   });
@@ -394,8 +427,8 @@ window.addEventListener('resize', function() {
 });
 </script>
 </body>
-</html>`, {
+</html>`),
       headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate'},
-    });
+    }};
   },
 };
