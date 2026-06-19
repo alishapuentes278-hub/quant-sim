@@ -6,6 +6,7 @@ export default {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>📈 AI量化模拟盘</title>
+<meta http-equiv="refresh" content="60">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0d1117; color: #e6edf3; padding: 10px; -webkit-tap-highlight-color: transparent; }
@@ -40,6 +41,7 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 6px; }
 <div class="header">
   <h1>📈 AI 量化模拟盘</h1>
   <p>学习K线 · 跑策略 · 边玩边学</p>
+<div style="font-size:10px;color:#484f58;margin-top:4px">每60秒自动刷新 · <span id="update-time"></span></div>
 </div>
 
 <div class="card" style="text-align:center">
@@ -383,6 +385,7 @@ function loadData() {
   }
   renderStrategies();
   selectStrategy(0);
+  document.getElementById('update-time').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
 // 页面加载完再等一帧确保canvas尺寸正确
@@ -398,7 +401,7 @@ window.addEventListener('resize', function() {
 </script>
 </body>
 </html>`, {
-      headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600'},
+      headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate', 'pragma': 'no-cache', 'expires': '0'},
     });
   },
 };
